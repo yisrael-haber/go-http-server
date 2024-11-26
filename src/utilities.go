@@ -54,8 +54,6 @@ func ExtractArgs(args []string) (int, string, error) {
 	port := 10101
 	loc, _ := filepath.Abs(".")
 
-	fmt.Println(args)
-
 	for _, arg := range args {
 		fmt.Println(arg)
 		fmt.Println(strings.HasPrefix(arg, "--port="))
