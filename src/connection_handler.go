@@ -32,7 +32,8 @@ func (handler ConnectionHandler) Handle() {
 		if strings.HasSuffix(err.Error(), "NOT IMPLEMENTED") {
 			HandleUnimplemented(handler.conn, request_line)
 		} else {
-			log.Fatal(err)
+			log.Println(err)
+			return
 		}
 	}
 
