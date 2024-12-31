@@ -15,9 +15,26 @@ import (
 const CRLF = "\r\n"
 const MAC_TCP_MSG_SIZE = 65537
 const SUCCESS_CODE = 200
+const MAX_FILE_SEND_SIZE = 1000 * 1000 * 20
+const SERVER = "Server: go-http-server/0.0.1 Go/1.23"
 
 type ConnectionHandler struct {
 	conn net.Conn
+}
+
+func AcceptAndHandleConnections(listener net.Listener) {
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		log.Printf("Connected to %s\n", conn.RemoteAddr().String())
+		go func(c net.Conn) {
+			ConnectionHandler{conn: c}.Handle()
+			c.Close()
+		}(conn)
+	}
 }
 
 func (handler ConnectionHandler) Handle() {
@@ -63,67 +80,107 @@ func handleGetRequest(request_line RequestLine) (Response, error) {
 		return Response{}, fmt.Errorf("Encountered error while constructing response line: %s\n", rl_err.Error())
 	}
 
-	content_of_requested_source, err := handlePathRequest(request_line)
+	ri, err := responseContentBuilder(request_line)
 
 	if err != nil {
 		return Response{}, err
 	}
 
-	content := strings.Join([]string{
-		"<!DOCTYPE HTML>",
-		"<html lang=\"en\">",
-		"<head>",
-		"<meta charset=\"utf-8\">",
-		"<style type=\"text/css\">\n:root {\ncolor-scheme: light dark;\n}\n</style>",
-		"<title>Basic HTTP Server in Golang</title>",
-		"<link rel='icon' href='resources/avhxh1b9r.webp' type='image/webp'/ >",
-		"<body>",
-		"<h1>Directory listing</h1>",
-		content_of_requested_source,
-		"</body>",
-		"</html>",
-	}, "\n") + "\n"
+	content := ri.content
+	headers := []string{}
 
-	headers := []string{
-		"Server: go-http-server/0.0.1 Go/1.23",
-		fmt.Sprintf("Date: %s", time.Now().Format(http.TimeFormat)),
-		"Content-Type: text/html; charset=utf-8",
-		fmt.Sprintf("Content-Length: %d", len(content)+4),
+	switch ri.IsDir {
+	case true:
+		headers = []string{
+			SERVER,
+			fmt.Sprintf("Date: %s", getDate()),
+			"Content-Type: text/html; charset=utf-8",
+			fmt.Sprintf("Content-Length: %d", len(content)),
+		}
+
+	case false:
+		ct := http.DetectContentType([]byte(content[:min(len(content)-1, 512)]))
+		headers = []string{
+			SERVER,
+			fmt.Sprintf("Date: %s", getDate()),
+			fmt.Sprintf("Content-Type: %s; charset=utf-8", ct),
+			fmt.Sprintf("Content-Length: %d", len(content)),
+		}
 	}
 
 	return Response{line: response_line, headers: headers, content: content}, nil
 }
 
-func handlePathRequest(line RequestLine) (string, error) {
+func responseContentBuilder(line RequestLine) (ResponseInfo, error) {
 	requested_path, err := confirmRequestedPath(line)
 
-	if err != nil {
-		return "", err
-	}
+	ri := ResponseInfo{}
 
-	vec_that_will_be_returned := []string{"<hr>", "<ul>"}
+	if err != nil {
+		return ri, err
+	}
 
 	info, err := os.Stat(requested_path)
 
 	if err != nil {
-		return "", err
+		return ri, err
 	}
 
 	if info.IsDir() {
+		lines := []string{
+			"<!DOCTYPE HTML>",
+			"<html lang=\"en\">",
+			"<head>",
+			"<meta charset=\"utf-8\">",
+			"<style type=\"text/css\">\n:root {\ncolor-scheme: light dark;\n}\n</style>",
+			"<title>Basic HTTP Server in Golang</title>",
+			"</head>",
+			"<body>",
+			"<h1>Directory listing</h1>",
+			ri.content,
+		}
+
+		ri.IsDir = true
 		read_dir, _ := os.ReadDir(requested_path)
 
 		for _, entry := range read_dir {
-			vec_that_will_be_returned = append(
-				vec_that_will_be_returned,
-				fmt.Sprintf("<li><a href=\"%s\">%s</a><li>", entry.Name(), entry.Name()),
+			ei, _ := entry.Info()
+			slash := ""
+			if ei.IsDir() {
+				slash = "/"
+			}
+
+			lines = append(
+				lines,
+				fmt.Sprintf("<li><a href=\"%s%s\">%s</a></li>", entry.Name(), slash, entry.Name()),
 			)
+		}
+
+		lines = append(lines, "</body>")
+		lines = append(lines, "</html>")
+		ri.content = strings.Join(lines, "\n")
+	} else {
+		ri.IsDir = false
+		fb := make([]byte, MAX_FILE_SEND_SIZE)
+
+		if info.Size() > MAX_FILE_SEND_SIZE {
+			ri.content = fmt.Sprintf("Size of requested file %s, %d, was too large (larger than %d bytes)", info.Name(), info.Size(), MAX_FILE_SEND_SIZE)
+		} else {
+			file, err := os.Open(requested_path)
+			if err != nil {
+				ri.content = fmt.Sprintf("SERVER ERROR: could not open file %s due to error %s", info.Name(), err.Error())
+			} else {
+				num_bytes, err := file.Read(fb)
+				if err != nil {
+					ri.content = "SERVER ERROR: COULD NOT READ FILE"
+				} else {
+					ri.content = string(fb[:num_bytes])
+				}
+			}
 		}
 	}
 
-	vec_that_will_be_returned = append(vec_that_will_be_returned, "</ul>")
-	vec_that_will_be_returned = append(vec_that_will_be_returned, "<hr>")
-
-	return strings.Join(vec_that_will_be_returned, "\n"), nil
+	return ri, nil
 }
 
 func confirmRequestedPath(line RequestLine) (string, error) {
@@ -132,6 +189,7 @@ func confirmRequestedPath(line RequestLine) (string, error) {
 	if err != nil {
 		return "", errors.New("Cannot extract working directory, maybe should run server with elevated privileges.")
 	}
+	fmt.Println(line)
 
 	awd, err := filepath.Abs(wd)
 
@@ -140,6 +198,7 @@ func confirmRequestedPath(line RequestLine) (string, error) {
 	}
 
 	requested_abs_path, err := filepath.Abs("." + line.URI)
+	fmt.Println(requested_abs_path)
 
 	if err != nil {
 		fmt.Println(err)
@@ -153,4 +212,8 @@ func confirmRequestedPath(line RequestLine) (string, error) {
 	}
 
 	return requested_abs_path, nil
+}
+
+func getDate() string {
+	return time.Now().Format(http.TimeFormat)
 }

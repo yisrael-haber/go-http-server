@@ -14,5 +14,5 @@ type Response struct {
 }
 
 func (response Response) serialize() string {
-	return response.line.serialize() + CRLF + strings.Join(response.headers, CRLF) + CRLF + CRLF + response.content + CRLF + CRLF
+	return response.line.serialize() + CRLF + strings.Join(response.headers, CRLF) + CRLF + CRLF + response.content
 }

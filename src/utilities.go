@@ -29,23 +29,8 @@ func BindPort(port int) net.Listener {
 	return l
 }
 
-func AcceptAndHandleConnections(listener net.Listener) {
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		log.Printf("Connected to %s\n", conn.RemoteAddr().String())
-		go func(c net.Conn) {
-			ConnectionHandler{conn: c}.Handle()
-			c.Close()
-		}(conn)
-	}
-}
-
 func DisplayHelp() {
-	fmt.Println("Usage: ./server [help|--port==[PORT] --loc==[LOCATION]]")
+	fmt.Println("Usage: ./server [help|--port=[PORT] --loc=[LOCATION]]")
 	fmt.Println("\tWhere PORT is a valid TCP port to serve on, 9998 by default.")
 	fmt.Println("\tWhere LOCATION is a valid TCP port to serve on, \".\" by default.")
 }
