@@ -1,7 +1,8 @@
 # go-http-server
 
-[] Allow for file downloading (Which will also provide favicon.ico)
-[] List files and directories in HTML
+[v] Allow for file downloading (Which will also provide favicon.ico)
+[v] List files and directories in HTML
+[ ] Support spaces in file/directory name (Shouldn't be too hard)
 
 ## Run
 ```bash
