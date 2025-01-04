@@ -40,8 +40,6 @@ func ExtractArgs(args []string) (int, string, error) {
 	loc, _ := filepath.Abs(".")
 
 	for _, arg := range args {
-		fmt.Println(arg)
-		fmt.Println(strings.HasPrefix(arg, "--port="))
 		if strings.HasPrefix(arg, "--port=") {
 			right_side := strings.SplitN(arg, "=", 2)
 			suggested_port, err := strconv.Atoi(right_side[1])

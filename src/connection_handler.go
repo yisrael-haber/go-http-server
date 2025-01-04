@@ -8,15 +8,18 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const CRLF = "\r\n"
 const MAC_TCP_MSG_SIZE = 65537
 const SUCCESS_CODE = 200
-const MAX_FILE_SEND_SIZE = 1000 * 1000 * 20
+const MAX_FILE_SEND_SIZE = 1000 * 1000 * 100
 const SERVER = "Server: go-http-server/0.0.1 Go/1.23"
+const NBSP = "&nbsp;"
 
 type ConnectionHandler struct {
 	conn net.Conn
@@ -99,12 +102,20 @@ func handleGetRequest(request_line RequestLine) (Response, error) {
 		}
 
 	case false:
+		content_disposition := ""
+		if request_line.download {
+			content_disposition = "Content-Disposition: attachment"
+		} else {
+			content_disposition = "Content-Disposition: inline"
+		}
+
 		ct := http.DetectContentType([]byte(content[:min(len(content)-1, 512)]))
 		headers = []string{
 			SERVER,
 			fmt.Sprintf("Date: %s", getDate()),
 			fmt.Sprintf("Content-Type: %s; charset=utf-8", ct),
 			fmt.Sprintf("Content-Length: %d", len(content)),
+			content_disposition,
 		}
 	}
 
@@ -123,6 +134,7 @@ func responseContentBuilder(line RequestLine) (ResponseInfo, error) {
 	info, err := os.Stat(requested_path)
 
 	if err != nil {
+		fmt.Printf("Requeste line %s resulted in error %s", line, err.Error())
 		return ri, err
 	}
 
@@ -142,19 +154,28 @@ func responseContentBuilder(line RequestLine) (ResponseInfo, error) {
 
 		ri.IsDir = true
 		read_dir, _ := os.ReadDir(requested_path)
+		dirs := []string{}
+		files := []string{}
 
 		for _, entry := range read_dir {
 			ei, _ := entry.Info()
 			slash := ""
 			if ei.IsDir() {
 				slash = "/"
+				space := strings.Repeat(NBSP, 2*(utf8.RuneCountInString(DOWNLOAD+" ")+1)+4)
+				entry_line := fmt.Sprintf("<li>%s<a href=\"%s%s\">%s</a></li>", space, entry.Name(), slash, entry.Name())
+				dirs = append(dirs, entry_line)
+			} else {
+				space := strings.Repeat(NBSP, 12)
+				entry_line := fmt.Sprintf("<li><a href=\"%s/%s\"> download </a>%s<a href=\"%s%s\">%s</a></li>", DOWNLOAD, entry.Name(), space, entry.Name(), slash, entry.Name())
+				files = append(files, entry_line)
 			}
-
-			lines = append(
-				lines,
-				fmt.Sprintf("<li><a href=\"%s%s\">%s</a></li>", entry.Name(), slash, entry.Name()),
-			)
 		}
+
+		sort.Strings(dirs)
+		sort.Strings(files)
+		lines = append(lines, dirs...)
+		lines = append(lines, files...)
 
 		lines = append(lines, "</body>")
 		lines = append(lines, "</html>")
@@ -189,7 +210,6 @@ func confirmRequestedPath(line RequestLine) (string, error) {
 	if err != nil {
 		return "", errors.New("Cannot extract working directory, maybe should run server with elevated privileges.")
 	}
-	fmt.Println(line)
 
 	awd, err := filepath.Abs(wd)
 
@@ -198,7 +218,6 @@ func confirmRequestedPath(line RequestLine) (string, error) {
 	}
 
 	requested_abs_path, err := filepath.Abs("." + line.URI)
-	fmt.Println(requested_abs_path)
 
 	if err != nil {
 		fmt.Println(err)
@@ -206,8 +225,6 @@ func confirmRequestedPath(line RequestLine) (string, error) {
 	}
 
 	if strings.HasPrefix(awd, requested_abs_path) && (awd != requested_abs_path) {
-		fmt.Println(awd)
-		fmt.Println(requested_abs_path)
 		return "", errors.New("Hey there bucko, note that you requested an illegal resource, maybe try running the server from a higher directory.")
 	}
 
