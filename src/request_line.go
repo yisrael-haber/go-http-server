@@ -50,6 +50,7 @@ func parseRequestLine(line string) (RequestLine, error) {
 	}
 
 	URI = strings.Replace(URI, "/"+DOWNLOAD, "", 1)
+	URI = strings.ReplaceAll(URI, "%20", " ")
 
 	request := RequestLine{
 		method:   method,

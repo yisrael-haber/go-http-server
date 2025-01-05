@@ -148,7 +148,7 @@ func responseContentBuilder(line RequestLine) (ResponseInfo, error) {
 			"<title>Basic HTTP Server in Golang</title>",
 			"</head>",
 			"<body>",
-			"<h1>Directory listing</h1>",
+			fmt.Sprintf("<h1>Directory Listing for \"%s\"</h1>", info.Name()),
 			ri.content,
 		}
 
