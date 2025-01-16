@@ -71,3 +71,37 @@ func ExtractArgs(args []string) (int, string, error) {
 
 	return port, loc, nil
 }
+
+func response_for_not_found(handler ConnectionHandler) {
+	rl := ResponseLine{version: "HTTP/1.1", status_code: 404, message: "File not found"}
+	handler.send_rl(rl)
+
+	content := `<!DOCTYPE HTML>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Error response</title>
+    </head>
+    <body>
+        <h1>Error response</h1>
+        <p>Error code: 404</p>
+        <p>Message: File not found.</p>
+        <p>Error code explanation: 404 - Nothing matches the given URI.</p>
+    </body>
+</html>
+`
+
+	date_header := Header{description: "Date", value: getDate()}
+	length_header := Header{description: "Content-Length", value: string(len(content))}
+
+	headers := []Header{
+		SERVER_HEADER,
+		date_header,
+		length_header,
+		HTML_CONTENT_HEADER,
+		Header{description: "Connection", value: "close"},
+	}
+
+	handler.send_headers(headers)
+	handler.send_content(content)
+}
